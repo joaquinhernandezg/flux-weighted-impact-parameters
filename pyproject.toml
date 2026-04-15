@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flux-weighted-impact-parameters"
+version = "0.1.0"
+description = "Utilities for flux-weighted impact-parameter and azimuthal-angle analyses in lensed systems."
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+  { name = "Joaquin Hernandez-Guajardo" },
+]
+dependencies = [
+  "astropy",
+  "matplotlib",
+  "mpdaf",
+  "numpy",
+  "photutils",
+  "scikit-image",
+  "scipy",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
