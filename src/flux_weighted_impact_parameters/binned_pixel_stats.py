@@ -2,12 +2,13 @@ from .impact_parameter_distribution import (
     azimuthal_angle_stats_for_binned_pixel,
     impact_parameter_stats_for_binned_pixel,
 )
-from .flux_contribution_maps import plot_input_contribution_map_for_binned_pixel
+from .flux_contribution_maps import plot_input_contribution_map_for_binned_pixel, compute_input_contribution_map_for_binned_pixel
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import matplotlib.pyplot as plt
 import numpy as np
 from .lensing import distance_to_critical_line_map
+from .rebinning import make_pixel_geometric_mask
 
 
 def get_binned_pixel_stats(highres_image, arc_mask_highres, rebinned_image, 
@@ -25,10 +26,12 @@ def get_binned_pixel_stats(highres_image, arc_mask_highres, rebinned_image,
 
     distances, line_mask = distance_to_critical_line_map(magnification_map, 
                                               wcs_xy=rebinned_image.wcs, x_array=xx, y_array=yy)
+    shear_map = np.sqrt(shear1_map.data**2 + shear2_map.data**2)
+
 
     def process_pixel(x, y):
         os.makedirs(f'{output_dir}', exist_ok=True)
-        fig, ax, contrib_map, weighted_flux_map, total_flux, sens_map = plot_input_contribution_map_for_binned_pixel(
+        fig, ax, contrib_map, weighted_flux_map, total_flux, sens_map, footprint_img = plot_input_contribution_map_for_binned_pixel(
             highres_image=highres_image,
             target_image=rebinned_image,
             highres_psf_FWHM=highres_psf_fwhm,
@@ -43,6 +46,7 @@ def get_binned_pixel_stats(highres_image, arc_mask_highres, rebinned_image,
             plot=False,
             plot_filename=f'{output_dir}/x_{x}_y_{y}.png'
         )
+
         # Keep memory usage bounded when processing many pixels.
         plt.close(fig)
 
@@ -86,18 +90,28 @@ def get_binned_pixel_stats(highres_image, arc_mask_highres, rebinned_image,
         # entropy
         entropy =0
 
+        flux_no_conv = np.sum(highres_image.data*footprint_img/np.sum(footprint_img)*arc_mask_highres.data)
+        flux_conv = np.sum(highres_image.data*sens_map/np.sum(sens_map)*arc_mask_highres.data)
+        psf_smeared_fraction = flux_no_conv/flux_conv
+
+
+        total_flux_spaxel = np.sum(highres_image.data*sens_map/np.sum(sens_map))
+        total_flux_arc = np.sum(highres_image.data*sens_map/np.sum(sens_map)*arc_mask_highres.data)
+
+        smeared_flux_fraction = total_flux_arc/total_flux_spaxel
+
+
  
-        shear_map = np.sqrt(shear1_map.data**2 + shear2_map.data**2)
-        mean_shear = np.sum(contrib_map*shear_map.data)/np.sum(contrib_map)
-        mean_shear1 = np.sum(contrib_map*shear1_map.data)/np.sum(contrib_map)
-        mean_shear2 = np.sum(contrib_map*shear2_map.data)/np.sum(contrib_map)
-        mean_kappa = np.sum(contrib_map*kappa_map.data)/np.sum(contrib_map)
-        ut = 1/(1-kappa_map.data-shear_map.data)
-        ur = 1/(1-kappa_map.data+shear_map.data)
-        mean_ut = np.sum(contrib_map*ut)/np.sum(contrib_map)
-        mean_ur = np.sum(contrib_map*ur)/np.sum(contrib_map)
-        phi_gamma = 0.5*np.arctan2(shear2_map.data, shear1_map.data)
-        mean_phi_gamma = np.sum(contrib_map*phi_gamma)/np.sum(contrib_map)
+        #mean_shear = np.sum(contrib_map*shear_map.data)/np.sum(contrib_map)
+        #mean_shear1 = np.sum(contrib_map*shear1_map.data)/np.sum(contrib_map)
+        #mean_shear2 = np.sum(contrib_map*shear2_map.data)/np.sum(contrib_map)
+        #mean_kappa = np.sum(contrib_map*kappa_map.data)/np.sum(contrib_map)
+        #ut = 1/(1-kappa_map.data-shear_map.data)
+        #ur = 1/(1-kappa_map.data+shear_map.data)
+        #mean_ut = np.sum(contrib_map*ut)/np.sum(contrib_map)
+        #mean_ur = np.sum(contrib_map*ur)/np.sum(contrib_map)
+        #phi_gamma = 0.5*np.arctan2(shear2_map.data, shear1_map.data)
+        #mean_phi_gamma = np.sum(contrib_map*phi_gamma)/np.sum(contrib_map)
 
         mean_magnification = np.sum(contrib_map*magnification_map.data)/np.sum(contrib_map)
         
@@ -110,18 +124,20 @@ def get_binned_pixel_stats(highres_image, arc_mask_highres, rebinned_image,
             "impact_parameter_stats": impact_parameter_stats,
             "azimuthal_angle_stats": az_stats,
             "sensitivity_map": sens_map,
+            "footprint_img": footprint_img,
             "distance_to_critical_line": distances[(x, y)],
             "local_magnification": mean_magnification,
             "weighted_coefficient_of_variation": CV_F,
             "effective_flux_contributing_pixels_fraction": f_eff,   
-            "entropy": entropy,
-            "mean_gamma": mean_shear,
-            "mean_gamma1": mean_shear1,
-            "mean_gamma2": mean_shear2,
-            "mean_kappa": mean_kappa,
-            "mean_ut": mean_ut,
-            "mean_ur": mean_ur,
-            "mean_phi_gamma": mean_phi_gamma
+            "psf_smeared_fraction": smeared_flux_fraction,
+            #"entropy": entropy,
+            #"mean_gamma": mean_shear,
+            #"mean_gamma1": mean_shear1,
+            #"mean_gamma2": mean_shear2,
+            #"mean_kappa": mean_kappa,
+            #"mean_ut": mean_ut,
+            #"mean_ur": mean_ur,
+            #"mean_phi_gamma": mean_phi_gamma
 
         }
         return (x, y), pixel_stats

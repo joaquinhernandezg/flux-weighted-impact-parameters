@@ -4,10 +4,10 @@ from astropy.stats import sigma_clipped_stats
 import astropy.units as u
 import matplotlib.pyplot as plt
 from mpdaf.obj import Image
+from .rebinning import downscale_highres_image, make_pixel_geometric_mask
 
 
-
-def compute_arc_sky_flux_contributions(highres_cutout, arc_mask, lowres_image, psf_kernel,
+def compute_arc_sky_flux_contributions(highres_cutout, arc_mask, target_pixscale, psf_kernel,
                                        add_noise_factor_std=0.0):
     """
     Split the high-resolution image into arc and non-arc components, propagate both through
@@ -26,8 +26,8 @@ def compute_arc_sky_flux_contributions(highres_cutout, arc_mask, lowres_image, p
         Original high-resolution cutout.
     arc_mask : 2D boolean or int array
         Binary mask of the arc in high-resolution pixel space. True/1 = arc.
-    lowres_image : mpdaf.obj.Image-like
-        Target low-resolution image defining the output grid.
+    target_pixscale : float
+        Target pixel scale in arcsec for the low-resolution image.
     psf_kernel : float
         Gaussian FWHM kernel in arcsec to convolve the high-resolution image to the KCWI PSF.
     add_noise_factor_std : float, optional
@@ -85,14 +85,24 @@ def compute_arc_sky_flux_contributions(highres_cutout, arc_mask, lowres_image, p
         img_sky_conv.add_gaussian_noise(add_noise_factor_std * noise_std)
         img_total_conv.add_gaussian_noise(add_noise_factor_std * noise_std)
 
+
+    
     # resample to KCWI grid
-    arc_resampled = img_arc_conv.align_with_image(lowres_image)
-    sky_resampled = img_sky_conv.align_with_image(lowres_image)
-    total_resampled = img_total_conv.align_with_image(lowres_image)
+    arc_resampled = downscale_highres_image(img_arc_conv, target_pixscale_arcsec=target_pixscale)
+    sky_resampled = downscale_highres_image(img_sky_conv, target_pixscale_arcsec=target_pixscale)
+    total_resampled = downscale_highres_image(img_total_conv, target_pixscale_arcsec=target_pixscale)
+
+    #arc_resampled = img_arc_conv.align_with_image(lowres_image)
+    #sky_resampled = img_sky_conv.align_with_image(lowres_image)
+    #total_resampled = img_total_conv.align_with_image(lowres_image)
 
     arc_flux = np.array(arc_resampled.data, dtype=float)
     sky_flux = np.array(sky_resampled.data, dtype=float)
     total_flux = np.array(total_resampled.data, dtype=float)
+
+    mean, std = total_resampled.background(niter=3, sigma=3)
+    snr = total_flux / std if std > 0 else np.zeros_like(total_flux)
+    
 
     # avoid numerical issues
     eps = np.finfo(float).eps
@@ -109,9 +119,10 @@ def compute_arc_sky_flux_contributions(highres_cutout, arc_mask, lowres_image, p
         "arc_flux": arc_flux,
         "sky_flux": sky_flux,
         "total_flux": total_flux,
-        "arc_fraction_flux": arc_fraction_flux,
-        "sky_fraction_flux": sky_fraction_flux,
-        "arc_mask_input": mask
+        "arc_flux_fraction": arc_fraction_flux,
+        "sky_flux_fraction": sky_fraction_flux,
+        "arc_mask_input": mask,
+        "snr": snr,
     }
 
 
@@ -166,10 +177,6 @@ def compute_input_contribution_map_for_binned_pixel(
     # --------------------------------------------------
     # 1. Delta image on target grid
     # --------------------------------------------------
-    delta = lowres_image.copy()
-    # this is effectively a delta function on the lowres grid, but we keep it as an image for easier handling of WCS and convolution later.
-    delta.data = np.zeros_like(lowres_image.data, dtype=float)
-    delta.data[y_pix_lowres, x_pix_lowres] = 1.0
 
     # --------------------------------------------------
     # 2. Resample highres image to target grid (with PSF convolution)
@@ -180,9 +187,7 @@ def compute_input_contribution_map_for_binned_pixel(
     # and no PSF convolution, this would be a binary mask of the highres pixels
     # that fall within the lowres pixel.
     # --------------------------------------------------
-    delta_on_highres = delta.align_with_image(highres_image, flux=True)
-    footprint = np.array(delta_on_highres.data, dtype=float)
-    footprint = np.where(np.isfinite(footprint), footprint, 0.0)
+    footprint_img = make_pixel_geometric_mask(highres_image, lowres_image, x_pix_lowres, y_pix_lowres)
 
     # --------------------------------------------------
     # 3. Convolve footprint with same PSF
@@ -193,8 +198,6 @@ def compute_input_contribution_map_for_binned_pixel(
     # results in a sensitivity map on the highres grid that indicates how much
     # highres pixel contributes to the selected lowres pixel after PSF convolution.
     # --------------------------------------------------
-    footprint_img = highres_image.copy()
-    footprint_img.data = footprint
 
     sensitivity = footprint_img.fftconvolve_gauss(
         fwhm=(psf_kernel_arcsec, psf_kernel_arcsec),
@@ -231,7 +234,7 @@ def compute_input_contribution_map_for_binned_pixel(
     if normalize and total_flux_contribution > 0:
         contrib_map /= total_flux_contribution
 
-    return contrib_map, weighted_flux_map, total_flux_contribution, sens_map
+    return contrib_map, weighted_flux_map, total_flux_contribution, sens_map, footprint_img
 
 def plot_input_contribution_map_for_binned_pixel(
     highres_image,
@@ -252,7 +255,7 @@ def plot_input_contribution_map_for_binned_pixel(
     Plot the original-pixel contribution map for one selected binned pixel.
     """
 
-    contrib_map, weighted_flux_map, total_flux, sens_map = \
+    contrib_map, weighted_flux_map, total_flux, sens_map, footprint_img = \
         compute_input_contribution_map_for_binned_pixel(
             highres_image=highres_image,
             lowres_image=target_image,
@@ -264,7 +267,7 @@ def plot_input_contribution_map_for_binned_pixel(
             normalize=normalize
         )
     if not plot:
-        return None, None, contrib_map, weighted_flux_map, total_flux, sens_map
+        return None, None, contrib_map, weighted_flux_map, total_flux, sens_map, footprint_img
     fig, ax = plt.subplots(figsize=figsize)
 
     data_to_plot = contrib_map if normalize else weighted_flux_map
@@ -308,4 +311,4 @@ def plot_input_contribution_map_for_binned_pixel(
     fig.tight_layout()
     if plot_filename is not None:
         fig.savefig(plot_filename, dpi=150)
-    return fig, ax, contrib_map, weighted_flux_map, total_flux, sens_map
+    return fig, ax, contrib_map, weighted_flux_map, total_flux, sens_map, footprint_img

@@ -7,6 +7,12 @@ from .correlation import (
     compute_pixel_correlation_matrix,
     effective_number_of_independent_pixels,
     overlap_coefficients,
+    covariance_matrix,
+    correlation_matrix,
+    geometrical_covariance,
+    geometrical_covariance_matrix,
+    covariance_matrix_fast,
+
 )
 from .flux_contribution_maps import (
     compute_arc_sky_flux_contributions,
@@ -39,6 +45,25 @@ from .segmentation_utils import (
     plot_segmentation_with_labels,
 )
 
+from .simulation import exponential_radial_profile, get_observed_value
+from .fitting import log_likelihood
+from .rebinning import (downscale_highres_image, upsample_low_res_mask, 
+                        get_extent, get_extent_in_other_frame, make_pixel_geometric_mask)
+
+from .plot_utils import (
+    plot_HST_and_MUSE_cutouts,
+    plot_HST_original_convolved_rebinned_and_mask,
+    plot_spaxels_on_highres,
+    plot_spaxels_on_lowres,
+    plot_example_contribution_map_for_binned_pixel,
+    plot_hst_binned_pixels_contribution_map_and_impact_parameter_distribution,
+    plot_displacement_maps,
+)
+
+from .utils import make_summary_table_spaxels
+
+
+
 __all__ = [
     "azimuthal_angle_stats_for_binned_pixel",
     "build_segmentation_map",
@@ -68,4 +93,25 @@ __all__ = [
     "weighted_mean",
     "weighted_percentile",
     "weighted_std",
+    "log_likelihood",
+    "exponential_radial_profile",
+    "get_observed_value",
+    "covariance_matrix",
+    "correlation_matrix",
+    "geometrical_covariance",
+    "geometrical_covariance_matrix",
+    "covariance_matrix_fast",
+    "get_extent",
+    "get_extent_in_other_frame",
+    "downscale_highres_image",
+    "upsample_low_res_mask",
+    "make_pixel_geometric_mask",
+    "plot_HST_and_MUSE_cutouts",
+    "plot_HST_original_convolved_rebinned_and_mask",
+    "plot_spaxels_on_highres",
+    "plot_spaxels_on_lowres",
+    "plot_example_contribution_map_for_binned_pixel",
+    "make_summary_table_spaxels",
+    "plot_hst_binned_pixels_contribution_map_and_impact_parameter_distribution",
+    "plot_displacement_maps",
 ]

@@ -74,3 +74,5 @@ def make_azimuthal_angle_map(
 
     fits.writeto(output_fits, phi_map.astype(np.float32), header=hdr, overwrite=True)
     return phi_map
+
+

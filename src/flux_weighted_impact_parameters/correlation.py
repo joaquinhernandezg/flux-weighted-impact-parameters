@@ -128,3 +128,34 @@ def effective_number_of_independent_pixels(corr_matrix):
     trR = np.trace(corr_matrix)
     trR2 = np.trace(np.matmul(corr_matrix, corr_matrix))
     return trR**2 / trR2 if trR2 > 0 else 0
+
+
+def geometrical_covariance(w_a, w_b):
+    return np.sum(w_a * w_b)
+
+def geometrical_covariance_matrix(w_list):
+    n = len(w_list)
+    cov_matrix = np.zeros((n, n))
+    for i in range(n):
+        for j in range(n):
+            cov_matrix[i, j] = geometrical_covariance(w_list[i], w_list[j])
+    return cov_matrix
+
+def covariance_matrix(w_list, sigma_meas_list, sigma_Q, ):
+    n = len(w_list)
+    cov_matrix = np.zeros((n, n))
+    for i in range(n):
+        for j in range(n):
+            cov_matrix[i, j] = geometrical_covariance(w_list[i], w_list[j])*sigma_Q**2 + (sigma_meas_list[i]**2 if i == j else 0)
+    return cov_matrix
+
+def covariance_matrix_fast(geometrical_cov_matrix, sigma_meas_list, sigma_Q):
+    n = len(sigma_meas_list)
+    cov_matrix = geometrical_cov_matrix * sigma_Q**2 + np.diag(sigma_meas_list**2)
+    return cov_matrix
+
+def correlation_matrix(cov_matrix):
+    diag = np.sqrt(np.diag(cov_matrix))
+    corr_matrix = cov_matrix / np.outer(diag, diag)
+    return corr_matrix
+

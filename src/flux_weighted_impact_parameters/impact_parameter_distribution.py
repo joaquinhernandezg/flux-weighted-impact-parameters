@@ -107,7 +107,9 @@ def impact_parameter_stats_for_binned_pixel(
     result : dict
         Weighted stats and arrays.
     """
-    contrib_map, weighted_flux_map, total_flux, sens_map = compute_input_contribution_map_for_binned_pixel(
+
+    
+    contrib_map, weighted_flux_map, total_flux, sens_map, footprint_img = compute_input_contribution_map_for_binned_pixel(
         highres_image=highres_image,
         lowres_image=lowres_image,
         highres_psf_FWHM=highres_psf_FWHM,
@@ -163,6 +165,28 @@ def impact_parameter_stats_for_binned_pixel(
     grad_mag = np.sqrt(df_dx**2 + df_dy**2)
     weighted_grad_mag = np.sum(contrib_map * grad_mag) / np.sum(contrib_map)
 
+    if footprint_img is not None:
+        footprint_data = np.ma.filled(footprint_img.data, 0.0)
+        footprint_mask = footprint_data > 0
+
+        impact_data = np.ma.filled(impact_parameter_map.data, np.nan)
+
+        assert footprint_mask.shape == impact_data.shape, (
+            f"footprint_mask shape {footprint_mask.shape} != "
+            f"impact_parameter_map shape {impact_data.shape}"
+        )
+
+        geometric_impact_parameters = impact_data[footprint_mask].ravel()
+        geometric_impact_parameters = geometric_impact_parameters[
+            np.isfinite(geometric_impact_parameters)
+        ]
+    else:
+        geometric_impact_parameters = np.asarray(impact_parameter_map.data).ravel()
+        geometric_impact_parameters = geometric_impact_parameters[
+            np.isfinite(geometric_impact_parameters)
+        ]
+
+    
 
     if len(values) == 0:
         return {
@@ -177,9 +201,12 @@ def impact_parameter_stats_for_binned_pixel(
             "weights": weights,
             "weights_map": weights_map,
             'impact_parameter_centre': impact_parameter_centre,
-            'impact_parameter_centre_error': impact_parameter_centre_error,
+            'impact_parameter_centre_error': np.std(geometric_impact_parameters) if len(geometric_impact_parameters) > 0 else np.nan,
             'impact_parameter_error_psf': impact_parameter_error_psf,
             'local_gradient_magnitude': weighted_grad_mag,
+            'geometric_impact_parameters': geometric_impact_parameters,
+            'geometric_mask': footprint_img.data if footprint_img is not None else None,
+
         }
 
     mean = weighted_mean(values, weights)
@@ -199,9 +226,11 @@ def impact_parameter_stats_for_binned_pixel(
         "weights": weights,
         "weights_map": weights_map,
         'impact_parameter_centre': impact_parameter_centre,
-        'impact_parameter_centre_error': impact_parameter_centre_error,
+        'impact_parameter_centre_error': np.std(geometric_impact_parameters) if len(geometric_impact_parameters) > 0 else np.nan,
         'impact_parameter_error_psf': impact_parameter_error_psf,
         'local_gradient_magnitude': weighted_grad_mag,
+        'geometric_values': geometric_impact_parameters,
+        'geometric_mask': footprint_img.data if footprint_img is not None else None,
     }
 
 def azimuthal_angle_stats_for_binned_pixel(
@@ -246,7 +275,7 @@ def azimuthal_angle_stats_for_binned_pixel(
     result : dict
         Weighted stats and arrays.
     """
-    contrib_map, weighted_flux_map, total_flux, sens_map = compute_input_contribution_map_for_binned_pixel(
+    contrib_map, weighted_flux_map, total_flux, sens_map, footprint_img = compute_input_contribution_map_for_binned_pixel(
         highres_image=highres_image,
         lowres_image=lowres_image,
         highres_psf_FWHM=highres_psf_FWHM,
