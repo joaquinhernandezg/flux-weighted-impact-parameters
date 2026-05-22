@@ -2,7 +2,7 @@ from .impact_parameter_distribution import (
     azimuthal_angle_stats_for_binned_pixel,
     impact_parameter_stats_for_binned_pixel,
 )
-from .flux_contribution_maps import plot_input_contribution_map_for_binned_pixel, compute_input_contribution_map_for_binned_pixel
+from .flux_contribution_maps import compute_input_contribution_map_for_binned_pixel
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import matplotlib.pyplot as plt
@@ -40,25 +40,15 @@ def get_binned_pixel_stats(highres_image: Image,
 
 
     def process_pixel(x, y):
-        os.makedirs(f'{output_dir}', exist_ok=True)
-        fig, ax, contrib_map, weighted_flux_map, total_flux, sens_map, footprint_img = plot_input_contribution_map_for_binned_pixel(
+        contrib_map, weighted_flux_map, total_flux, sens_map, footprint_img = compute_input_contribution_map_for_binned_pixel(
             highres_image=highres_image,
-            target_image=rebinned_image,
+            lowres_image=rebinned_image,
             highres_psf_FWHM=highres_psf_fwhm,
             lowres_psf_FWHM=lowres_psf_fwhm,
-            x_bin=x,
-            y_bin=y,
-            arc_mask_highres=arc_mask_highres,
-            normalize=True,
-            show_contours=True,
-            figsize=(8, 8),
-            cmap='magma',
-            plot=False,
-            plot_filename=f'{output_dir}/x_{x}_y_{y}.png'
-        )
+            x_pix_lowres=x,
+            y_pix_lowres=y,
+            arc_mask_highres=arc_mask_highres)
 
-        # Keep memory usage bounded when processing many pixels.
-        plt.close(fig)
 
         impact_parameter_stats = impact_parameter_stats_for_binned_pixel(
             highres_image=highres_image,
@@ -68,8 +58,7 @@ def get_binned_pixel_stats(highres_image: Image,
             x_pix_lowres=x,
             y_pix_lowres=y,
             arc_mask_highres=arc_mask_highres,
-            impact_parameter_map=impact_parameter_map.data,
-            normalize_weights=True
+            impact_parameter_map=impact_parameter_map.data
         )
         az_stats = azimuthal_angle_stats_for_binned_pixel(
             highres_image=highres_image,
@@ -79,8 +68,7 @@ def get_binned_pixel_stats(highres_image: Image,
             x_pix_lowres=x,
             y_pix_lowres=y,
             arc_mask_highres=arc_mask_highres,
-            azimuthal_angle_map=az_angle_map.data,
-            normalize_weights=True
+            azimuthal_angle_map=az_angle_map.data
         )
 
         #weighted_coefficient_of_variation

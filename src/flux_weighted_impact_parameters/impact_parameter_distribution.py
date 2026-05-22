@@ -17,7 +17,6 @@ def impact_parameter_stats_for_binned_pixel(
     y_pix_lowres,
     arc_mask_highres=None,
     percentiles=(5, 16, 25, 50, 75, 84, 95),
-    normalize_weights=True
 ):
     """
     Compute the flux-contribution-weighted impact-parameter distribution
@@ -58,11 +57,10 @@ def impact_parameter_stats_for_binned_pixel(
         lowres_psf_FWHM=lowres_psf_FWHM,
         x_pix_lowres=x_pix_lowres,
         y_pix_lowres=y_pix_lowres,
-        arc_mask_highres=arc_mask_highres,
-        normalize=normalize_weights
+        arc_mask_highres=arc_mask_highres
     )
 
-    weights_map = contrib_map if normalize_weights else weighted_flux_map
+    weights_map = contrib_map / np.sum(contrib_map) 
 
     if impact_parameter_map.shape != weights_map.shape:
         raise ValueError("impact_parameter_map and hst_cutout/contribution map must have the same shape")
@@ -224,11 +222,10 @@ def azimuthal_angle_stats_for_binned_pixel(
         lowres_psf_FWHM=lowres_psf_FWHM,
         x_pix_lowres=x_pix_lowres,
         y_pix_lowres=y_pix_lowres,
-        arc_mask_highres=arc_mask_highres,
-        normalize=normalize_weights
+        arc_mask_highres=arc_mask_highres
     )
 
-    weights_map = contrib_map if normalize_weights else weighted_flux_map
+    weights_map = contrib_map / np.sum(contrib_map) 
 
     if azimuthal_angle_map.shape != weights_map.shape:
         raise ValueError("azimuthal_angle_map and hst_cutout/contribution map must have the same shape")
