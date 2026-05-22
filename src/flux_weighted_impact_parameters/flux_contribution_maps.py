@@ -7,12 +7,14 @@ from mpdaf.obj import Image
 from .rebinning import downscale_highres_image, make_pixel_geometric_mask
 
 
-def compute_arc_sky_flux_contributions(highres_cutout, arc_mask, target_pixscale, psf_kernel,
-                                       add_noise_factor_std=0.0):
+def compute_arc_sky_flux_contributions(highres_cutout: Image, 
+                                       arc_mask: np.ndarray, 
+                                       target_pixscale: float, 
+                                       psf_kernel: float):
     """
     Split the high-resolution image into arc and non-arc components, propagate both through
     PSF convolution + WCS resampling, and compute their fractional contribution
-    to each KCWI spaxel.
+    to each binned pixel.
 
     The final products are 2D maps, containing the arc flux contribution, non-arc flux contribution, total flux, and relative contributions.
     After PSF convolution and resampling.
@@ -22,16 +24,14 @@ def compute_arc_sky_flux_contributions(highres_cutout, arc_mask, target_pixscale
 
     Parameters
     ----------
-    highres_cutout : mpdaf.obj.Image-like
+    highres_cutout : mpdaf.obj.Image
         Original high-resolution cutout.
-    arc_mask : 2D boolean or int array
+    arc_mask : np.ndarray
         Binary mask of the arc in high-resolution pixel space. True/1 = arc.
     target_pixscale : float
         Target pixel scale in arcsec for the low-resolution image.
     psf_kernel : float
         Gaussian FWHM kernel in arcsec to convolve the high-resolution image to the KCWI PSF.
-    add_noise_factor_std : float, optional
-        Standard deviation of the Gaussian noise to add to the convolved images, as a factor of the image standard deviation. If 0, no noise is added.
 
     Returns
     -------
@@ -76,16 +76,6 @@ def compute_arc_sky_flux_contributions(highres_cutout, arc_mask, target_pixscale
     img_total_conv = img_total.fftconvolve_gauss(
         fwhm=(psf_kernel, psf_kernel), unit_fwhm=u.arcsec
     )
-
-    # optional noise addition
-    if add_noise_factor_std > 0:
-        noise_std = sigma_clipped_stats(img_total_conv.data, sigma=3)[2]
-
-        img_arc_conv.add_gaussian_noise(add_noise_factor_std * noise_std)
-        img_sky_conv.add_gaussian_noise(add_noise_factor_std * noise_std)
-        img_total_conv.add_gaussian_noise(add_noise_factor_std * noise_std)
-
-
     
     # resample to KCWI grid
     arc_resampled = downscale_highres_image(img_arc_conv, target_pixscale_arcsec=target_pixscale)
@@ -128,15 +118,13 @@ def compute_arc_sky_flux_contributions(highres_cutout, arc_mask, target_pixscale
 
 
 def compute_input_contribution_map_for_binned_pixel(
-    highres_image,
-    lowres_image,
-    highres_psf_FWHM,
-    lowres_psf_FWHM,
-    x_pix_lowres,
-    y_pix_lowres,
-    arc_mask_highres=None,
-    normalize=True
-):
+    highres_image: Image,
+    lowres_image: Image,
+    highres_psf_FWHM: float,
+    lowres_psf_FWHM: float,
+    x_pix_lowres: int,
+    y_pix_lowres: int,
+    arc_mask_highres=None):
 
     """
     Compute the contribution map on the original high-resolution grid for a single
@@ -147,7 +135,7 @@ def compute_input_contribution_map_for_binned_pixel(
     highres_image : mpdaf.obj.Image-like
         Original high-resolution image.
     lowres_image : mpdaf.obj.Image-like
-        Output/binned image defining the target grid (e.g. kcwi_white_2x2).
+        Output/binned image defining the target grid (e.g. a MUSE image).
     highres_psf_FWHM : float
         Gaussian FWHM in arcsec used to degrade high-resolution to target PSF.
     lowres_psf_FWHM : float
@@ -156,17 +144,19 @@ def compute_input_contribution_map_for_binned_pixel(
         Target pixel coordinates on the lowresolution image.
     arc_mask_highres : 2D bool/int array or None
         If given, restrict contributions to arc-mask pixels only.
-    normalize : bool
-        If True, normalize the contribution map so that its sum is 1.
 
     Returns
     -------
-    contrib_map : 2D ndarray
-        Contribution map on the original high-resolution grid.
-    weighted_flux_map : 2D ndarray
-        Contribution weighted by the original high-resolution flux.
-    total_flux_contribution : float
-        Total flux contributed to the selected binned pixel.
+    flux_contribution_weights : 2D array
+        The contribution map on the original high-resolution grid for the selected binned pixel, normalized to sum to 1.
+    flux_contribution_map : 2D array
+        The contribution map on the original high-resolution grid for the selected binned pixel, in flux units (i.e. multiplied by the highres image).
+    total_flux : float
+        The total flux contribution to the selected binned pixel (sum of flux_contribution_map).
+    sens_map : 2D array
+        The sensitivity map on the high-resolution grid for the selected binned pixel, i.e. the PSF-convolved and resampled footprint of the selected binned pixel on the high-resolution grid.
+    footprint_img : 2D array
+        The geometric footprint of the selected binned pixel on the high-resolution grid, before PSF convolution.
     """
 
     # --------------------------------------------------
@@ -224,91 +214,11 @@ def compute_input_contribution_map_for_binned_pixel(
     else:
         highres_data_use = highres_data
 
-    weighted_flux_map = highres_data_use * sens_map
-    total_flux_contribution = np.nansum(weighted_flux_map)
+    flux_contribution_map = highres_data_use * sens_map
+    total_flux = np.nansum(flux_contribution_map)
 
-    # --------------------------------------------------
-    # 5. Optional normalization
-    # --------------------------------------------------
-    contrib_map = weighted_flux_map.copy()
-    if normalize and total_flux_contribution > 0:
-        contrib_map /= total_flux_contribution
+    flux_contribution_weights  = flux_contribution_map.copy()
+    flux_contribution_weights  /= np.nansum(flux_contribution_weights ) 
 
-    return contrib_map, weighted_flux_map, total_flux_contribution, sens_map, footprint_img
+    return flux_contribution_weights , flux_contribution_map, total_flux, sens_map, footprint_img
 
-def plot_input_contribution_map_for_binned_pixel(
-    highres_image,
-    target_image,
-    highres_psf_FWHM,
-    lowres_psf_FWHM,
-    x_bin,
-    y_bin,
-    arc_mask_highres=None,
-    normalize=True,
-    show_contours=True,
-    figsize=(8, 8),
-    cmap='magma',
-    plot=True,
-    plot_filename=None
-):
-    """
-    Plot the original-pixel contribution map for one selected binned pixel.
-    """
-
-    contrib_map, weighted_flux_map, total_flux, sens_map, footprint_img = \
-        compute_input_contribution_map_for_binned_pixel(
-            highres_image=highres_image,
-            lowres_image=target_image,
-            highres_psf_FWHM=highres_psf_FWHM,
-            lowres_psf_FWHM=lowres_psf_FWHM,
-            x_pix_lowres=x_bin,
-            y_pix_lowres=y_bin,
-            arc_mask_highres=arc_mask_highres,
-            normalize=normalize
-        )
-    if not plot:
-        return None, None, contrib_map, weighted_flux_map, total_flux, sens_map, footprint_img
-    fig, ax = plt.subplots(figsize=figsize)
-
-    data_to_plot = contrib_map if normalize else weighted_flux_map
-
-    vmin = 0
-    vmax = np.nanpercentile(data_to_plot[data_to_plot > 0], 99) if np.any(data_to_plot > 0) else 1
-
-    im = ax.imshow(data_to_plot, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
-
-    if show_contours:
-        highres_data = np.array(highres_image.data, dtype=float)
-        finite = np.isfinite(highres_data)
-        if np.any(finite):
-            levels = np.linspace(np.nanpercentile(highres_data[finite], 99),
-                                 np.nanpercentile(highres_data[finite], 99.99), 3)
-            ax.contour(highres_data, origin='lower', colors='gray', linewidths=0.7, levels=levels)
-
-    cbar = fig.colorbar(im, ax=ax)
-    if normalize:
-        cbar.set_label('Fractional contribution to selected binned pixel')
-    else:
-        cbar.set_label('Flux contribution')
-
-    ax.set_title(f'Input-pixel contribution to binned pixel ({x_bin}, {y_bin})')
-    ax.set_xlabel('HST x [pix]')
-    ax.set_ylabel('HST y [pix]')
-
-    # draw a rectangle of the selected spaxel on the highres image for reference
-    lowres_wcs = target_image.wcs.wcs
-    lowres_pixel_coords = np.array([[x_bin, y_bin]])
-    lowres_world_coords = lowres_wcs.wcs_pix2world(lowres_pixel_coords, 0)
-    highres_wcs = highres_image.wcs.wcs
-    highres_pixel_coords = highres_wcs.wcs_world2pix(lowres_world_coords, 0)
-    x_highres, y_highres = highres_pixel_coords[0]
-
-    # size is the ratio of the lowres pixel scale to the highres pixel scale
-    rect_size = target_image.wcs.wcs.proj_plane_pixel_scales()[0].to(u.arcsec).value/highres_image.wcs.wcs.proj_plane_pixel_scales()[0].to(u.arcsec).value
-    rect = plt.Rectangle((x_highres - rect_size / 2, y_highres - rect_size / 2), rect_size, rect_size,
-                         edgecolor='red', facecolor='none', linewidth=1, alpha=0.8)
-    ax.add_patch(rect)
-    fig.tight_layout()
-    if plot_filename is not None:
-        fig.savefig(plot_filename, dpi=150)
-    return fig, ax, contrib_map, weighted_flux_map, total_flux, sens_map, footprint_img

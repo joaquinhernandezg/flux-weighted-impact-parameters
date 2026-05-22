@@ -1,7 +1,6 @@
 import numpy as np
 
 
-
 def compute_pixel_correlation_matrix(pixel_stats_dict):
     """
     Compute the cosine-similarity correlation matrix between spaxel

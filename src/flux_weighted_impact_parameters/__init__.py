@@ -17,7 +17,6 @@ from .correlation import (
 from .flux_contribution_maps import (
     compute_arc_sky_flux_contributions,
     compute_input_contribution_map_for_binned_pixel,
-    plot_input_contribution_map_for_binned_pixel,
 )
 from .impact_parameter_distribution import (
     azimuthal_angle_stats_for_binned_pixel,
@@ -35,14 +34,13 @@ from .lensing import (
     make_delens,
     scale_lensing_matrix,
 )
-from .make_segmentation_mask import (
-    make_segmentation_map_and_mask,
-    save_segmentation_mask_as_fits,
-)
-from .segmentation_utils import (
+
+from .segmentation import (
     build_segmentation_map,
     keep_sources_within_radius,
     plot_segmentation_with_labels,
+    make_segmentation_map_and_mask,
+    save_segmentation_mask_as_fits,
 )
 
 from .simulation import exponential_radial_profile, get_observed_value
@@ -52,6 +50,7 @@ from .rebinning import (downscale_highres_image, upsample_low_res_mask,
 
 from .plot_utils import (
     plot_HST_and_MUSE_cutouts,
+    plot_input_contribution_map_for_binned_pixel,
     plot_HST_original_convolved_rebinned_and_mask,
     plot_spaxels_on_highres,
     plot_spaxels_on_lowres,

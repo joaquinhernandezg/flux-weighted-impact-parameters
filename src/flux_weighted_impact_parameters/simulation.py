@@ -13,12 +13,17 @@ def exponential_radial_profile(impact_parameter_map, scale_length, normalization
     scale_length : float
         The scale length of the exponential profile (in kpc).
     normalization : float
-        The normalization factor for the profile.
+        The normalization factor for the profile (in units of cm^-2).
+    random_noise : float
+        The standard deviation of the random noise to be added to the profile. Default is 0.1.
+        Noise is independent for each pixel.
+    is_noise_log : bool
+        If True, the random noise is added in log space. If False, it is added in linear space. Default is True.
 
     Returns
     -------
     2D array
-        The computed exponential radial profile for each pixel.
+        The computed exponential radial profile for each pixel. In units of cm^-2.
     """
 
     model_field = impact_parameter_map.copy()
@@ -37,6 +42,25 @@ def exponential_radial_profile(impact_parameter_map, scale_length, normalization
 
 
 def get_observed_value(model_field, flux_contribution_maps):
+    """
+    Compute the flux-weighted mean and standard deviation of the model field given the flux contribution maps.
+    The function runs on a list of flux contribution maps, where each map corresponds to the contribution of a given spaxel to the pixels in the image.
+
+    Parameters
+    ----------
+    model_field : 2D array
+        The model field (e.g., impact parameter map) for each pixel.
+    flux_contribution_maps : 3D array
+        A 3D array where each slice along the first axis corresponds to the flux contribution map for a given spaxel. The shape should be (n_spaxels, ny, nx).    
+    
+    Returns
+    -------
+    mean_values : 1D array
+        The flux-weighted mean value of the model field for each spaxel.
+    std_values : 1D array
+        The flux-weighted standard deviation of the model field for each spaxel.
+    """
+
     field = np.asarray(model_field.data)
     weights = np.asarray(flux_contribution_maps)
 

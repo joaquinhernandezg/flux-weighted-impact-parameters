@@ -5,7 +5,84 @@ import numpy as np
 import astropy.units as u
 from matplotlib.patches import ConnectionPatch
 import matplotlib.patches as patches
+from .flux_contribution_maps import compute_input_contribution_map_for_binned_pixel
 
+def plot_input_contribution_map_for_binned_pixel(
+    highres_image,
+    target_image,
+    highres_psf_FWHM,
+    lowres_psf_FWHM,
+    x_bin,
+    y_bin,
+    arc_mask_highres=None,
+    normalize=True,
+    show_contours=True,
+    figsize=(8, 8),
+    cmap='magma',
+    plot=True,
+    plot_filename=None
+):
+    """
+    Plot the original-pixel contribution map for one selected binned pixel.
+    """
+
+    contrib_map, weighted_flux_map, total_flux, sens_map, footprint_img = \
+        compute_input_contribution_map_for_binned_pixel(
+            highres_image=highres_image,
+            lowres_image=target_image,
+            highres_psf_FWHM=highres_psf_FWHM,
+            lowres_psf_FWHM=lowres_psf_FWHM,
+            x_pix_lowres=x_bin,
+            y_pix_lowres=y_bin,
+            arc_mask_highres=arc_mask_highres,
+            normalize=normalize
+        )
+    if not plot:
+        return None, None, contrib_map, weighted_flux_map, total_flux, sens_map, footprint_img
+    fig, ax = plt.subplots(figsize=figsize)
+
+    data_to_plot = contrib_map if normalize else weighted_flux_map
+
+    vmin = 0
+    vmax = np.nanpercentile(data_to_plot[data_to_plot > 0], 99) if np.any(data_to_plot > 0) else 1
+
+    im = ax.imshow(data_to_plot, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax)
+
+    if show_contours:
+        highres_data = np.array(highres_image.data, dtype=float)
+        finite = np.isfinite(highres_data)
+        if np.any(finite):
+            levels = np.linspace(np.nanpercentile(highres_data[finite], 99),
+                                 np.nanpercentile(highres_data[finite], 99.99), 3)
+            ax.contour(highres_data, origin='lower', colors='gray', linewidths=0.7, levels=levels)
+
+    cbar = fig.colorbar(im, ax=ax)
+    if normalize:
+        cbar.set_label('Fractional contribution to selected binned pixel')
+    else:
+        cbar.set_label('Flux contribution')
+
+    ax.set_title(f'Input-pixel contribution to binned pixel ({x_bin}, {y_bin})')
+    ax.set_xlabel('HST x [pix]')
+    ax.set_ylabel('HST y [pix]')
+
+    # draw a rectangle of the selected spaxel on the highres image for reference
+    lowres_wcs = target_image.wcs.wcs
+    lowres_pixel_coords = np.array([[x_bin, y_bin]])
+    lowres_world_coords = lowres_wcs.wcs_pix2world(lowres_pixel_coords, 0)
+    highres_wcs = highres_image.wcs.wcs
+    highres_pixel_coords = highres_wcs.wcs_world2pix(lowres_world_coords, 0)
+    x_highres, y_highres = highres_pixel_coords[0]
+
+    # size is the ratio of the lowres pixel scale to the highres pixel scale
+    rect_size = target_image.wcs.wcs.proj_plane_pixel_scales()[0].to(u.arcsec).value/highres_image.wcs.wcs.proj_plane_pixel_scales()[0].to(u.arcsec).value
+    rect = plt.Rectangle((x_highres - rect_size / 2, y_highres - rect_size / 2), rect_size, rect_size,
+                         edgecolor='red', facecolor='none', linewidth=1, alpha=0.8)
+    ax.add_patch(rect)
+    fig.tight_layout()
+    if plot_filename is not None:
+        fig.savefig(plot_filename, dpi=150)
+    return fig, ax, contrib_map, weighted_flux_map, total_flux, sens_map, footprint_img
 
 
 def plot_HST_and_MUSE_cutouts(hst_cutout, muse_cutout_oversampled, out_filename="HST_MNUSE_cutouts.png"):

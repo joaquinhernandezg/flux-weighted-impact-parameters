@@ -9,19 +9,29 @@ import matplotlib.pyplot as plt
 import numpy as np
 from .lensing import distance_to_critical_line_map
 from .rebinning import make_pixel_geometric_mask
+from mpdaf.obj import Image
 
 
-def get_binned_pixel_stats(highres_image, arc_mask_highres, rebinned_image, 
-                           rebinned_mask, highres_psf_fwhm, lowres_psf_fwhm, magnification_map,
-                            impact_parameter_map, az_angle_map, shear1_map, shear2_map, kappa_map,
-                              binfactor=1, max_workers=None):
+def get_binned_pixel_stats(highres_image: Image, 
+                            arc_mask_highres: Image, 
+                            rebinned_image: Image, 
+                            rebinned_mask: Image, 
+                            highres_psf_fwhm: float, 
+                            lowres_psf_fwhm: float, 
+                            magnification_map: Image,
+                            impact_parameter_map: Image, 
+                            az_angle_map: Image, 
+                            shear1_map: Image, 
+                            shear2_map: Image, 
+                            kappa_map: Image,
+                            max_workers=None,
+                            output_dir=f'../plots/flux_contribution_maps'):
 
     yy, xx = np.indices(rebinned_image.data.shape)
     yy, xx = yy.astype(int), xx.astype(int)
     xx, yy = xx[rebinned_mask.data > 0], yy[rebinned_mask.data > 0]
 
     binned_pixel_stats = {}
-    output_dir = f'contribution_maps/flux_contribution_map_binning_{binfactor}x{binfactor}'
     os.makedirs(output_dir, exist_ok=True)
 
     distances, line_mask = distance_to_critical_line_map(magnification_map, 

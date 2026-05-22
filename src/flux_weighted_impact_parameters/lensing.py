@@ -1,23 +1,56 @@
 from astropy.cosmology import FlatLambdaCDM
-# force reimport
 from mpdaf.obj import Image
 import astropy.units as u
 import numpy as np
 import os
 from scipy.ndimage import distance_transform_edt
+from skimage.measure import find_contours
+from scipy.ndimage import binary_dilation
 
 
-def scale_lensing_matrix(lensing_matrix_filename, z_lens, z_source, z_norm_matrices, output_filename):
+
+def scale_lensing_matrix(lensing_matrix_filename: str, 
+                         z_lens: float, 
+                         z_source: float, 
+                         z_norm_matrices: float, 
+                         output_filename: str) -> Image:
     """
     Scale the lensing matrix from the normalization redshift to the desired lens and source redshifts.
 
-    param lensing_matrix_filename: str, the filename of the lensing matrix to be scaled
-    param z_lens: float, the redshift of the lens
-    param z_source: float, the redshift of the source
-    param z_norm_matrices: float, the redshift at which the lensing matrix was originally computed
-    param output_filename: str, the filename to save the scaled lensing matrix to
-    return: the scaled lensing matrix as a numpy array
+    Let DLS the angular diameter distance between the lens and the source, 
+    and DS the angular diameter distance to the source. 
+    The lensing matrix is proportional to DLS/DS. 
+    If the input lensing matrix is normalized at a redshift z_norm_matrices, we can compute the scaling factor as:
+    (DLS(z_lens, z_source)/DS(z_source)) / (DLS(z_lens, z_norm_matrices)/DS(z_norm_matrices))
+    This means "de-normalizing" the input lensing matrix to the physical deflection field, and then "re-normalizing" it to the desired redshift configuration.
+
+    IMPORTANT:
+    This assumes that the lensing matrices can be scaled, which is only true in the single-plane lensing approximation.
+    If the input lensing matrix was computed using a multi-plane lensing code, the scaling should not be applied.
+    The scaling only applied to deflections, convergence and shear maps (and not magnification maps).
+
+    Eq. 2.5 from "Introduction to Gravitational Lensing Lecture scripts" by
+    Massimo Meneghetti (https://www.ita.uni-heidelberg.de/~jmerten/misc/meneghetti_lensing.pdf)
+
+    Parameters
+    ----------
+    lensing_matrix_filename : str
+        Path to the input lensing matrix FITS file.
+    z_lens : float
+        Redshift of the lens.
+    z_source : float
+        Redshift of the source.
+    z_norm_matrices : float
+        Redshift at which the input lensing matrix is normalized.
+    output_filename : str
+        Path to save the scaled lensing matrix FITS file.
+
+    Returns
+    -------
+    Image
+        The scaled lensing matrix as an MPDAF Image object.
     """
+
     lensing_matrix = Image(lensing_matrix_filename)
     scaled_lensing_matrix = lensing_matrix.copy()
 
@@ -37,7 +70,30 @@ def scale_lensing_matrix(lensing_matrix_filename, z_lens, z_source, z_norm_matri
     return scaled_lensing_matrix
 
 
-def compute_magnification_map_from_deflections(alpha_x, alpha_y, save_filename=None):
+def compute_magnification_map_from_deflections(alpha_x: Image, 
+                                               alpha_y: Image, save_filename=None) -> Image:
+    """
+    This function computes the magnification map from the deflection fields alpha_x and alpha_y.
+    The magnification is given by mu = 1/detA, where A is the Jacobian matrix of the lens mapping, 
+    which can be computed from the derivatives of the deflection fields.
+
+    This function is based on Eq. 2.33 to 2.48 from "Introduction to Gravitational Lensing Lecture scripts" by
+    Massimo Meneghetti (https://www.ita.uni-heidelberg.de/~jmerten/misc/meneghetti_lensing.pdf)
+
+    This function is intended to be used with deflection fields computed at a given redshift when
+    no magnification map is available, and not shear and convergence maps.
+
+    Parameters
+    ----------
+    alpha_x, alpha_y : Image
+        The deflection fields in the x and y directions, as MPDAF Image objects.
+    save_filename : str or None
+        If not None, the path to save the computed magnification map as a FITS file. If None, the magnification map is not saved to disk.
+    Returns
+    -------
+    mu_image : Image
+        The computed magnification map as an MPDAF Image object.
+    """
     # pixel scale of the map
     dx = alpha_x.wcs.wcs.proj_plane_pixel_scales()[0].to_value('arcsec')
     dy = alpha_x.wcs.wcs.proj_plane_pixel_scales()[1].to_value('arcsec')
@@ -61,7 +117,35 @@ def compute_magnification_map_from_deflections(alpha_x, alpha_y, save_filename=N
         mu_image.write(save_filename)
     return mu_image
 
-def compute_kappa_shear_map_from_deflections(alpha_x, alpha_y):
+def compute_kappa_shear_map_from_deflections(alpha_x: Image, 
+                                             alpha_y: Image) -> tuple[Image, Image, Image, Image]:
+    """
+    This function computes the convergence and shear maps from the deflection fields alpha_x and alpha_y.
+    The convergence and shear can be computed from the derivatives of the deflection fields.
+
+    This function is based on Eq. 2.30, 3.38, 2.39 and 2.40 from "Introduction to Gravitational Lensing Lecture scripts" by
+    Massimo Meneghetti (https://www.ita.uni-heidelberg.de/~jmerten/misc/meneghetti_lensing.pdf)
+
+    This function is intended to be used with deflection fields computed at a given redshift 
+    when no shear and convergence maps are available.
+
+    Parameters
+    ----------
+    alpha_x, alpha_y : Image
+        The deflection fields in the x and y directions, as MPDAF Image objects.
+
+    Returns
+    -------
+    gamma_image : Image
+        The computed shear map as an MPDAF Image object.
+    gamma1_image : Image
+        The computed gamma1 shear component map as an MPDAF Image object.
+    gamma2_image : Image
+        The computed gamma2 shear component map as an MPDAF Image object.
+    kappa_image : Image
+        The computed convergence map as an MPDAF Image object.
+    """
+
     # pixel scale of the map
     dx = alpha_x.wcs.wcs.proj_plane_pixel_scales()[0].to_value('arcsec')
     dy = alpha_x.wcs.wcs.proj_plane_pixel_scales()[1].to_value('arcsec')
@@ -91,23 +175,39 @@ def compute_kappa_shear_map_from_deflections(alpha_x, alpha_y):
 
     return  gamma_image, gamma1_image, gamma2_image, kappa_image
 
+
+
 # ============================================================
 # Lensing utilities
 # ============================================================
-def make_delens(ra_array, dec_array, dir_matrices='.', alpha_x_filename='alpha_x.fits', alpha_y_filename='alpha_y.fits'):
+def make_delens(ra_array: np.ndarray, 
+                dec_array: np.ndarray, 
+                dir_matrices: str='.', 
+                alpha_x_filename: str='alpha_x.fits', 
+                alpha_y_filename: str='alpha_y.fits'):
     """
-    Delens sky positions using the deflection matrices.
+    Delens sky positions using the deflection matrices. It assumes that the deflection matrices are given in the same WCS as the input coordinates,
+    and that the deflection values are in arcseconds.
+    It also assumes that positve x deflections correspond to negative RA deflections, and positive y deflections correspond to positive Dec deflections, 
+    which is the standard convention for LENSTOOL.
+    It also assumes the deflections are normalized at the desired redshift configuration, so no scaling is applied to the deflection matrices.
 
     Parameters
     ----------
-    ra_array, dec_array : float or array-like
-        Sky coordinates in degrees.
-
+    ra_array, dec_array : array-like
+        Arrays of RA and Dec coordinates to be delensed, in degrees.
+    dir_matrices : str
+        Directory where the deflection matrices are stored.
+    alpha_x_filename, alpha_y_filename : str
+        Filenames of the deflection matrices in the x and y directions, respectively. 
+        The files should be in FITS format and contain the deflection values in arcseconds.
+    
     Returns
     -------
     ra_abs, dec_abs : ndarray
         Delensed/source-plane coordinates in degrees.
     """
+
     alpha_x_path = os.path.join(dir_matrices, alpha_x_filename)
     alpha_y_path = os.path.join(dir_matrices, alpha_y_filename)
 
@@ -121,11 +221,13 @@ def make_delens(ra_array, dec_array, dir_matrices='.', alpha_x_filename='alpha_x
     dec_array = np.atleast_1d(np.asarray(dec_array, dtype=float))
 
     # Rotate the deflection field into RA/Dec-aligned components
+    # in case the deflection matrices are not aligned with the RA/Dec axes (e.g., if they were computed in a rotated frame)
     rot = np.radians(-wcs_1.get_rot())
 
     ax0 = alpha_x.data.copy()
     ay0 = alpha_y.data.copy()
 
+    # Rotate the deflection field into RA/Dec-aligned components
     ax_rot = ax0 * np.cos(rot) - ay0 * np.sin(rot)
     ay_rot = ax0 * np.sin(rot) + ay0 * np.cos(rot)
 
@@ -143,15 +245,38 @@ def make_delens(ra_array, dec_array, dir_matrices='.', alpha_x_filename='alpha_x
     y_array = np.clip(y_array, 0, ny - 1)
     x_array = np.clip(x_array, 0, nx - 1)
 
-    # Deflections are in arcsec
+    # Calculate the delensed/source-plane coordinates by subtracting the deflections from the observed coordinates
+    # the +/- signs are because of the convention that positive x deflections correspond to decreasing RA, and positive y to increasing Dec
     ra_abs = ra_array + alpha_x[y_array, x_array].data / 3600.0 / np.abs(np.cos(np.deg2rad(dec_array)))
     dec_abs = dec_array - alpha_y[y_array, x_array].data / 3600.0
 
     return np.asarray(ra_abs), np.asarray(dec_abs)
 
-def get_critical_line_mask(mu_map, min_length_pix=300):
-    from skimage.measure import find_contours
 
+
+def get_critical_line_mask(mu_map, min_length_pix=300):
+    """
+    Compute a mask of the critical line from the magnification map by finding the zero-level contours of the inverse magnification map (1/mu).
+    The function returns a boolean mask where pixels on the critical line are True, and the rest are False. 
+    The function also filters the contours to keep only those that are longer than a given minimum
+
+    Parameters
+    ----------
+    mu_map : Image
+        The magnification map as an MPDAF Image object.
+    min_length_pix : int
+        Minimum length in pixels for a contour to be considered part of the critical line. This is
+        used to filter out small contours that are likely due to noise. 
+        The optimal value may depend on the resolution of the map and the expected size of the critical line features.
+    
+    Returns
+    -------
+    line_mask : 2D boolean array
+        A boolean mask where pixels on the critical line are True, and the rest are False.
+    """
+
+    # The mask is created on the inverse magnification map, 
+    # since the critical line corresponds to infinite magnification (mu -> infinity), which means 1/mu -> 0.
     inv_mu = 1 / mu_map.data
 
     # find zero-level contours
@@ -185,9 +310,6 @@ def get_critical_line_mask(mu_map, min_length_pix=300):
 
         large_contours.append(verts)
 
-
-    from scipy.ndimage import binary_dilation
-
     def contours_to_mask(contours, shape, thickness=1):
         ny, nx = shape
         mask = np.zeros((ny, nx), dtype=bool)
@@ -218,7 +340,30 @@ def get_critical_line_mask(mu_map, min_length_pix=300):
 
 
 def distance_to_critical_line_map(mu_map, wcs_xy, x_array, y_array):
-    from skimage.measure import find_contours
+    """
+    Compute a map of the distance to the critical line for a set of input coordinates (x_array, y_array) in pixel space, given a magnification map and its WCS.
+    The function first computes a mask of the critical line from the magnification map, 
+    and then computes the distance from each input coordinate to the nearest pixel on the critical line, returning a dictionary with
+    the distances for each input coordinate.
+
+    Parameters
+    ----------
+    mu_map : Image
+        The magnification map as an MPDAF Image object.
+    wcs_xy : WCS
+        The WCS object corresponding to the pixel coordinates of the magnification map.
+    x_array, y_array : array-like
+        Arrays of x and y pixel coordinates for which to compute the distance to the critical line.
+    
+    Returns
+    -------
+    distances : dict
+        A dictionary where the keys are tuples of input coordinates (x, y) and the values are the distances from those coordinates to the nearest pixel on the critical line, in the same units as
+        the pixel scale of the magnification map.
+    line_mask : 2D boolean array
+        A boolean mask where pixels on the critical line are True, and the rest are False.
+        
+    """
 
     inv_mu = 1 / mu_map.data
 
