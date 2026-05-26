@@ -24,8 +24,40 @@ def get_binned_pixel_stats(highres_image: Image,
                             shear1_map: Image, 
                             shear2_map: Image, 
                             kappa_map: Image,
-                            max_workers=None,
                             output_dir=f'../plots/flux_contribution_maps'):
+    """
+    Compute the flux contribution map and impact parameter distribution for each binned pixel in the rebinned image, and save the results in a dictionary.
+    
+    Parameters
+    ----------
+    highres_image : Image
+        The high-resolution HST image.
+    arc_mask_highres : Image
+        The high-resolution arc mask.
+    rebinned_image : Image
+        The rebinned HST image or low-resolution image.
+    rebinned_mask : Image
+        The rebinned mask indicating the binned pixels for which to compute statistics.
+    highres_psf_fwhm : float
+        The FWHM of the PSF in the high-resolution image, in arcseconds.
+    lowres_psf_fwhm : float
+        The FWHM of the PSF in the low-resolution image, in arcseconds.
+    magnification_map : Image
+        The magnification map corresponding to the rebinned image.
+    impact_parameter_map : Image
+        The impact parameter map corresponding to the rebinned image.
+    az_angle_map : Image
+        The azimuthal angle map corresponding to the rebinned image.
+    shear1_map : Image
+        The shear1 map corresponding to the rebinned image.
+    shear2_map : Image
+        The shear2 map corresponding to the rebinned image.
+    kappa_map : Image
+        The convergence map corresponding to the rebinned image.
+    output_dir : str, optional
+        The directory where to save the output plots, by default '../plots/flux_contribution_maps
+
+    """
 
     yy, xx = np.indices(rebinned_image.data.shape)
     yy, xx = yy.astype(int), xx.astype(int)
@@ -36,7 +68,9 @@ def get_binned_pixel_stats(highres_image: Image,
 
     distances, line_mask = distance_to_critical_line_map(magnification_map, 
                                               wcs_xy=rebinned_image.wcs, x_array=xx, y_array=yy)
-    shear_map = np.sqrt(shear1_map.data**2 + shear2_map.data**2)
+    
+    # Not used for now
+    #shear_map = np.sqrt(shear1_map.data**2 + shear2_map.data**2)
 
 
     def process_pixel(x, y):
@@ -98,8 +132,6 @@ def get_binned_pixel_stats(highres_image: Image,
 
         smeared_flux_fraction = total_flux_arc/total_flux_spaxel
 
-
- 
         #mean_shear = np.sum(contrib_map*shear_map.data)/np.sum(contrib_map)
         #mean_shear1 = np.sum(contrib_map*shear1_map.data)/np.sum(contrib_map)
         #mean_shear2 = np.sum(contrib_map*shear2_map.data)/np.sum(contrib_map)
@@ -138,12 +170,12 @@ def get_binned_pixel_stats(highres_image: Image,
             #"mean_phi_gamma": mean_phi_gamma
 
         }
-        return (x, y), pixel_stats
+        return pixel_stats
 
     for x, y in zip(xx, yy):
         print(f"Processing pixel (x={x}, y={y})...")
-        pixel_key, pixel_stats = process_pixel(x, y)
-        binned_pixel_stats[pixel_key] = pixel_stats
+        pixel_stats = process_pixel(x, y)
+        binned_pixel_stats[(x, y)] = pixel_stats
 
 
     return binned_pixel_stats

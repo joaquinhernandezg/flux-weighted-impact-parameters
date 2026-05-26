@@ -58,6 +58,37 @@ def make_azimuthal_angle_map(
         output_fits: str='azimuthal_angle_map.fits',
         image_data_ext=0,
         cosmo=FlatLambdaCDM(H0=70, Om0=0.3),):
+    """
+    Create an azimuthal angle map for the pixel centers of the input HST image, where the azimuthal angle is defined with respect to the major axis of G1 and increases counterclockwise (east of north).
+    Parameters    ----------
+    image : str or Image
+        The input HST image, either as a file path or an MPDAF Image object.
+    ra_G : float
+        Right Ascension of G1 in degrees.
+    dec_G : float
+        Declination of G1 in degrees.
+    z_G : float
+        Redshift of G1, used for cosmological calculations if needed.
+    PA_G : float
+        Position angle of G1 in degrees, measured east of north.
+    dir_matrices : str, optional
+        Directory where the lensing deflection matrices (alpha_x and alpha_y) are stored, by default '.'.
+    alpha_x_filename : str, optional
+        Filename of the alpha_x deflection matrix, by default 'alpha_x.fits'.
+    alpha_y_filename : str, optional
+        Filename of the alpha_y deflection matrix, by default 'alpha_y.fits'.
+    output_fits : str, optional
+        Filename for the output azimuthal angle map FITS file, by default 'azimuthal_angle_map.fits'.
+    image_data_ext : int, optional
+        Extension number in the FITS file where the image data is located, by default 0.
+    cosmo : astropy.cosmology, optional
+        Cosmology object for any cosmological calculations, by default FlatLambdaCDM(H0=70, Om0=0.3).
+    
+    Returns
+    -------
+    Image
+        An MPDAF Image object containing the azimuthal angle map in degrees, where 0 degrees is along the major axis of G1 and increases counterclockwise (east of north).
+    """
 
     # set header key BUNIT to 'arcsec'
     fits.setval(f"{dir_matrices}/{alpha_x_filename}", "BUNIT", value="arcsec")
